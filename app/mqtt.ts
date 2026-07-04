@@ -7,6 +7,7 @@ import {
     setMode,
     getAlarmSummary,
     getDeviceState,
+    getDeviceStatuses,
     acknowledgeAlarm,
 } from './modbus'
 import { createLogger } from './logger'
@@ -20,6 +21,7 @@ export const TOPIC_PREFIX_SETTINGS = `${TOPIC_PREFIX}/settings`
 export const TOPIC_PREFIX_ALARM = `${TOPIC_PREFIX}/alarm`
 export const TOPIC_PREFIX_DEVICE_INFORMATION = `${TOPIC_PREFIX}/deviceInformation`
 export const TOPIC_PREFIX_DEVICE_STATE = `${TOPIC_PREFIX}/deviceState`
+export const TOPIC_PREFIX_DEVICE_STATUS = `${TOPIC_PREFIX}/deviceStatus`
 export const TOPIC_NAME_STATUS = `${TOPIC_PREFIX}/status`
 
 type TopicValue = string | number | boolean | null
@@ -61,6 +63,15 @@ export const publishValues = async (modbusClient: ModbusRTU, mqttClient: MqttCli
 
     for (const [name, value] of Object.entries(deviceState)) {
         const topicName = `${TOPIC_PREFIX_DEVICE_STATE}/${name}`
+
+        topicMap[topicName] = formatBinaryValue(value)
+    }
+
+    // Publish device statuses (read-only status/fault coils)
+    const deviceStatuses = await getDeviceStatuses(modbusClient)
+
+    for (const [name, value] of Object.entries(deviceStatuses)) {
+        const topicName = `${TOPIC_PREFIX_DEVICE_STATUS}/${name}`
 
         topicMap[topicName] = formatBinaryValue(value)
     }

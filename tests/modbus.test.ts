@@ -1,4 +1,4 @@
-import { validateDevice, parseDevice, ModbusDeviceType, setSetting } from '../app/modbus'
+import { validateDevice, parseDevice, ModbusDeviceType, setSetting, getDeviceStatuses } from '../app/modbus'
 import ModbusRTU from 'modbus-serial'
 
 test('validateDevice', () => {
@@ -153,5 +153,54 @@ describe('setSetting', () => {
                 'Unknown setting "nonExistentSetting"'
             )
         })
+    })
+})
+
+describe('getDeviceStatuses', () => {
+    test('maps status coils to named booleans', async () => {
+        const mockClient = {
+            readCoils: jest
+                .fn()
+                // Coils 26-35 (index 7 = coil 33 is intentionally skipped)
+                .mockResolvedValueOnce({ data: [true, false, true, false, true, false, true, false, false, true] })
+                // Coils 41-46 (indices 3/4 = coils 44/45 skipped)
+                .mockResolvedValueOnce({ data: [true, false, true, false, false, true] })
+                // Coil 50
+                .mockResolvedValueOnce({ data: [true] }),
+        } as any
+
+        const statuses = await getDeviceStatuses(mockClient)
+
+        expect(statuses).toEqual({
+            pressureGuard: true,
+            coolingError: false,
+            coolingRunning: true,
+            heatRecoveryError: false,
+            heatRecoveryRunning: true,
+            heatingError: false,
+            heatingRunning: true,
+            externalHeatingDisabled: false,
+            externalCoolingDisabled: true,
+            alarmA: true,
+            alarmB: false,
+            clockProgramActive: true,
+            externalUnitDefrosting: true,
+            freezingRisk: true,
+        })
+    })
+
+    test('skips a block that fails to read instead of throwing', async () => {
+        const mockClient = {
+            readCoils: jest
+                .fn()
+                .mockRejectedValueOnce(new Error('timeout')) // Coils 26-35 unsupported
+                .mockResolvedValueOnce({ data: [false, false, false, false, false, false] }) // Coils 41-46
+                .mockResolvedValueOnce({ data: [false] }), // Coil 50
+        } as any
+
+        const statuses = await getDeviceStatuses(mockClient)
+
+        expect(statuses).not.toHaveProperty('coolingRunning')
+        expect(statuses).toMatchObject({ alarmA: false, freezingRisk: false })
     })
 })

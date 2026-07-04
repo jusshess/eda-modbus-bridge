@@ -130,6 +130,8 @@ export const getReadings = async (modbusClient: ModbusRTU): Promise<Readings> =>
         'heatRecoveryExhaustSide': result.data[1],
         'heatRecoveryTemperatureDifferenceSupplySide': parseTemperature(result.data[2]),
         'heatRecoveryTemperatureDifferenceExhaustSide': parseTemperature(result.data[3]),
+        'supplyHeatingCoilTemperatureDelta': parseTemperature(result.data[4]),
+        'exhaustFanTemperatureDelta': parseTemperature(result.data[5]),
         'mean48HourExhaustHumidity': result.data[6],
     }
 
@@ -204,7 +206,85 @@ export const getReadings = async (modbusClient: ModbusRTU): Promise<Readings> =>
         }
     }
 
+    // Filter/heat-exchanger pressure drops (14-16) and absolute humidity (36).
+    // Read defensively — these are not present on all firmwares, and a failed
+    // read must not take down the whole polling cycle.
+    try {
+        const pressures = await mutex.runExclusive(async () => tryReadHoldingRegisters(modbusClient, 14, 3))
+        readings = {
+            ...readings,
+            'supplyFilterPressure': pressures.data[0],
+            'extractFilterPressure': pressures.data[1],
+            'heatExchangerPressure': pressures.data[2],
+        }
+    } catch {
+        logger.error('Failed to read filter/heat-exchanger pressure registers (14-16), skipping')
+    }
+
+    try {
+        const absoluteHumidity = await mutex.runExclusive(async () => tryReadHoldingRegisters(modbusClient, 36, 1))
+        readings = {
+            ...readings,
+            'absoluteHumidity': absoluteHumidity.data[0],
+        }
+    } catch {
+        logger.error('Failed to read absolute humidity register (36), skipping')
+    }
+
     return readings as Readings
+}
+
+// Read-only status/fault coils that are not part of the operating-state bitfield
+// (register 44). Each block is read defensively so an unsupported range simply
+// omits those entities instead of crashing the polling cycle.
+export const getDeviceStatuses = async (modbusClient: ModbusRTU): Promise<Record<string, boolean>> => {
+    let statuses: Record<string, boolean> = {}
+
+    // Component running/fault coils (26-35)
+    try {
+        const result = await mutex.runExclusive(async () => tryReadCoils(modbusClient, 26, 10))
+        statuses = {
+            ...statuses,
+            'pressureGuard': Boolean(result.data[0]), // 26
+            'coolingError': Boolean(result.data[1]), // 27
+            'coolingRunning': Boolean(result.data[2]), // 28
+            'heatRecoveryError': Boolean(result.data[3]), // 29
+            'heatRecoveryRunning': Boolean(result.data[4]), // 30
+            'heatingError': Boolean(result.data[5]), // 31
+            'heatingRunning': Boolean(result.data[6]), // 32
+            'externalHeatingDisabled': Boolean(result.data[8]), // 34
+            'externalCoolingDisabled': Boolean(result.data[9]), // 35
+        }
+    } catch {
+        logger.error('Failed to read component status coils (26-35), skipping')
+    }
+
+    // Alarm group, clock program and external-unit defrost coils (41-46)
+    try {
+        const result = await mutex.runExclusive(async () => tryReadCoils(modbusClient, 41, 6))
+        statuses = {
+            ...statuses,
+            'alarmA': Boolean(result.data[0]), // 41
+            'alarmB': Boolean(result.data[1]), // 42
+            'clockProgramActive': Boolean(result.data[2]), // 43
+            'externalUnitDefrosting': Boolean(result.data[5]), // 46
+        }
+    } catch {
+        logger.error('Failed to read alarm/status coils (41-46), skipping')
+    }
+
+    // Freezing risk (50)
+    try {
+        const result = await mutex.runExclusive(async () => tryReadCoils(modbusClient, 50, 1))
+        statuses = {
+            ...statuses,
+            'freezingRisk': Boolean(result.data[0]), // 50
+        }
+    } catch {
+        logger.error('Failed to read freezing risk coil (50), skipping')
+    }
+
+    return statuses
 }
 
 export const getSettings = async (modbusClient: ModbusRTU): Promise<Settings> => {

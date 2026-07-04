@@ -151,6 +151,12 @@ export type Readings = {
     exhaustFanSpeed?: number
     returnWaterTemperature?: number
     temperatureControlState: string
+    supplyHeatingCoilTemperatureDelta?: number
+    exhaustFanTemperatureDelta?: number
+    supplyFilterPressure?: number
+    extractFilterPressure?: number
+    heatExchangerPressure?: number
+    absoluteHumidity?: number
 }
 
 export type Settings = {
