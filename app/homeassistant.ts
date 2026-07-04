@@ -3,6 +3,7 @@ import {
     TOPIC_NAME_STATUS,
     TOPIC_PREFIX_ALARM,
     TOPIC_PREFIX_DEVICE_STATE,
+    TOPIC_PREFIX_DEVICE_STATUS,
     TOPIC_PREFIX_MODE,
     TOPIC_PREFIX_READINGS,
     TOPIC_PREFIX_SETTINGS,
@@ -101,6 +102,38 @@ export const configureMqttDiscovery = async (modbusClient: ModbusRTU, mqttClient
             configurationBase,
             'mean48HourExhaustHumidity',
             'Exhaust air humidity (48h mean)'
+        ),
+        'absoluteHumidity': createSensorConfiguration(
+            configurationBase,
+            'absoluteHumidity',
+            'Absolute humidity (extract air)'
+        ),
+        'supplyFilterPressure': createSensorConfiguration(
+            configurationBase,
+            'supplyFilterPressure',
+            'Supply filter pressure'
+        ),
+        'extractFilterPressure': createSensorConfiguration(
+            configurationBase,
+            'extractFilterPressure',
+            'Extract filter pressure'
+        ),
+        'heatExchangerPressure': createSensorConfiguration(
+            configurationBase,
+            'heatExchangerPressure',
+            'Heat exchanger pressure'
+        ),
+        'supplyHeatingCoilTemperatureDelta': createSensorConfiguration(
+            configurationBase,
+            'supplyHeatingCoilTemperatureDelta',
+            'Supply heating coil temperature delta',
+            { 'unit_of_measurement': '°C' }
+        ),
+        'exhaustFanTemperatureDelta': createSensorConfiguration(
+            configurationBase,
+            'exhaustFanTemperatureDelta',
+            'Exhaust fan temperature delta',
+            { 'unit_of_measurement': '°C' }
         ),
         // Generic sensors (percentages, minutes left, cascade values)
         'heatRecoverySupplySide': createSensorConfiguration(
@@ -425,6 +458,52 @@ export const configureMqttDiscovery = async (modbusClient: ModbusRTU, mqttClient
         'defrosting': createDeviceStateConfiguration(configurationBase, 'defrosting', 'Defrosting'),
     }
 
+    // Read-only status/fault coils (independent of the register 44 state bitfield above)
+    binarySensorConfigurationMap = {
+        ...binarySensorConfigurationMap,
+        'pressureGuard': createStatusConfiguration(configurationBase, 'pressureGuard', 'Pressure guard', 'problem'),
+        'coolingError': createStatusConfiguration(configurationBase, 'coolingError', 'Cooling error', 'problem'),
+        'coolingRunning': createStatusConfiguration(configurationBase, 'coolingRunning', 'Cooling running', 'running'),
+        'heatRecoveryError': createStatusConfiguration(
+            configurationBase,
+            'heatRecoveryError',
+            'Heat recovery error',
+            'problem'
+        ),
+        'heatRecoveryRunning': createStatusConfiguration(
+            configurationBase,
+            'heatRecoveryRunning',
+            'Heat recovery running',
+            'running'
+        ),
+        'heatingError': createStatusConfiguration(configurationBase, 'heatingError', 'Heating error', 'problem'),
+        'heatingRunning': createStatusConfiguration(configurationBase, 'heatingRunning', 'Heating running', 'running'),
+        'externalUnitDefrosting': createStatusConfiguration(
+            configurationBase,
+            'externalUnitDefrosting',
+            'External unit defrosting',
+            'running'
+        ),
+        'freezingRisk': createStatusConfiguration(configurationBase, 'freezingRisk', 'Freezing risk', 'problem'),
+        'alarmA': createStatusConfiguration(configurationBase, 'alarmA', 'Alarm group A', 'problem'),
+        'alarmB': createStatusConfiguration(configurationBase, 'alarmB', 'Alarm group B', 'problem'),
+        'externalHeatingDisabled': createStatusConfiguration(
+            configurationBase,
+            'externalHeatingDisabled',
+            'External heating disabled'
+        ),
+        'externalCoolingDisabled': createStatusConfiguration(
+            configurationBase,
+            'externalCoolingDisabled',
+            'External cooling disabled'
+        ),
+        'clockProgramActive': createStatusConfiguration(
+            configurationBase,
+            'clockProgramActive',
+            'Clock program active'
+        ),
+    }
+
     // Button for acknowledging alarms
     const buttonConfigurationMap = {
         'acknowledgeAlarm': createButtonConfiguration(
@@ -644,6 +723,25 @@ const createDeviceStateConfiguration = (
         'object_id': `eda_state_${stateName}`,
         'state_topic': `${TOPIC_PREFIX_DEVICE_STATE}/${stateName}`,
         'entity_category': 'diagnostic',
+    }
+}
+
+const createStatusConfiguration = (
+    configurationBase: EntityConfiguration,
+    statusName: string,
+    entityName: string,
+    deviceClass?: string
+): EntityConfiguration => {
+    return {
+        ...configurationBase,
+        // Must not collide with device-state ("eda-state-") or switch unique ids
+        'unique_id': `eda-status-${statusName}`,
+        'name': entityName,
+        'default_entity_id': `binary_sensor.eda_status_${statusName}`,
+        'object_id': `eda_status_${statusName}`,
+        'state_topic': `${TOPIC_PREFIX_DEVICE_STATUS}/${statusName}`,
+        'entity_category': 'diagnostic',
+        ...(deviceClass ? { 'device_class': deviceClass } : {}),
     }
 }
 
