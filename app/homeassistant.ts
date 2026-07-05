@@ -338,6 +338,46 @@ export const configureMqttDiscovery = async (modbusClient: ModbusRTU, mqttClient
                 'unit_of_measurement': '%',
             }
         ),
+        'cookerHoodSupplyFanSpeed': createNumberConfiguration(
+            configurationBase,
+            'cookerHoodSupplyFanSpeed',
+            'Cooker hood supply fan speed',
+            {
+                min: 20,
+                max: 100,
+                'unit_of_measurement': '%',
+            }
+        ),
+        'cookerHoodExhaustFanSpeed': createNumberConfiguration(
+            configurationBase,
+            'cookerHoodExhaustFanSpeed',
+            'Cooker hood exhaust fan speed',
+            {
+                min: 20,
+                max: 100,
+                'unit_of_measurement': '%',
+            }
+        ),
+        'centralVacuumSupplyFanSpeed': createNumberConfiguration(
+            configurationBase,
+            'centralVacuumSupplyFanSpeed',
+            'Central vacuum cleaner supply fan speed',
+            {
+                min: 20,
+                max: 100,
+                'unit_of_measurement': '%',
+            }
+        ),
+        'centralVacuumExhaustFanSpeed': createNumberConfiguration(
+            configurationBase,
+            'centralVacuumExhaustFanSpeed',
+            'Central vacuum cleaner exhaust fan speed',
+            {
+                min: 20,
+                max: 100,
+                'unit_of_measurement': '%',
+            }
+        ),
     }
 
     // Configurable switches

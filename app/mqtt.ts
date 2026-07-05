@@ -169,6 +169,17 @@ export const handleMessage = async (
         logger.info(`Updating setting ${settingName} to ${payload}`)
 
         await setSetting(modbusClient, settingName, payload)
+
+        // Echo the requested value immediately so Home Assistant reflects the change
+        // without waiting for the full settings re-read below. That re-read walks the
+        // whole register map over Modbus RTU and can be slow or time out on a busy
+        // bus, in which case the periodic publish would otherwise be the first update
+        // to arrive (up to one publish interval later). publishSettings() runs right
+        // after to reconcile with what the device actually stored.
+        await publishTopics(mqttClient, { [`${TOPIC_PREFIX_SETTINGS}/${settingName}`]: formatValue(payload) })
+
+        // Re-read and publish the real settings to reconcile (e.g. a register the
+        // device refused to change in its current mode reverts to its actual value).
         await publishSettings(modbusClient, mqttClient)
     } else if (topicName.startsWith(TOPIC_PREFIX_MODE) && topicName.endsWith('/set')) {
         // Handle mode changes
