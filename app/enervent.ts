@@ -24,6 +24,11 @@ export interface HoldingRegisterSettingConfiguration extends BaseSettingConfigur
     registerScale?: number
     min?: number
     max?: number
+    // Write with "write multiple registers" (FC16) instead of "write single
+    // register" (FC6). Some registers (e.g. the panel ventilation level, 53) are
+    // only honored by the unit when written as a block, matching how the native
+    // Home Assistant modbus integration wrote them.
+    writeMultiple?: boolean
 }
 
 export type SettingConfiguration = CoilSettingConfiguration | HoldingRegisterSettingConfiguration
@@ -59,7 +64,19 @@ export const AVAILABLE_SETTINGS: Record<string, SettingConfiguration> = {
     'centralVacuumCleaner': { dataAddress: 5, registerType: 'coil' },
     // Writable fan levels (percent). "ventilationLevel" is the target level normally
     // set from the control panel; the base speeds are the per-fan setpoints.
-    'ventilationLevel': { dataAddress: 53, decimals: 0, registerType: 'holding', min: 20, max: 100 },
+    'ventilationLevel': {
+        dataAddress: 53,
+        decimals: 0,
+        registerType: 'holding',
+        min: 20,
+        max: 100,
+        // Reg 53 is ignored when written as a single register (FC6); the unit
+        // only applies it via write-multiple (FC16), like the old native modbus.
+        // We write only [value] to 53. If a 2-register block is ever required,
+        // read-modify-write to preserve reg 54 (supplyFanOverPressure) — do NOT
+        // copy the old native `[value, 0]`, which zeroed reg 54.
+        writeMultiple: true,
+    },
     'supplyFanBaseSpeed': { dataAddress: 51, decimals: 0, registerType: 'holding', min: 20, max: 100 },
     'exhaustFanBaseSpeed': { dataAddress: 52, decimals: 0, registerType: 'holding', min: 20, max: 100 },
     // Per-function fan speeds (percent). When the matching auxiliary function is
