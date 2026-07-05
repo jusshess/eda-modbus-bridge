@@ -453,7 +453,11 @@ const setNumericSetting = async (
     // Apply register scaling (default 1 = no scaling)
     const scaledValue = numericValue * (settingConfig.registerScale ?? 1)
 
-    await mutex.runExclusive(async () => tryWriteHoldingRegister(modbusClient, settingConfig.dataAddress, scaledValue))
+    await mutex.runExclusive(async () =>
+        settingConfig.writeMultiple
+            ? tryWriteHoldingRegisters(modbusClient, settingConfig.dataAddress, [scaledValue])
+            : tryWriteHoldingRegister(modbusClient, settingConfig.dataAddress, scaledValue)
+    )
 }
 
 export const getDeviceInformation = async (modbusClient: ModbusRTU): Promise<DeviceInformation> => {
@@ -616,6 +620,18 @@ const tryWriteHoldingRegister = async (modbusClient: ModbusRTU, dataAddress: num
         return await modbusClient.writeRegister(dataAddress, value)
     } catch (e) {
         logger.error(`Failed to write holding register address ${dataAddress}, value ${value}`)
+        throw e
+    }
+}
+
+// Write via "write multiple registers" (FC16). Some registers are ignored when
+// written as a single register (FC6) but honored as a block.
+const tryWriteHoldingRegisters = async (modbusClient: ModbusRTU, dataAddress: number, values: number[]) => {
+    try {
+        logger.debug(`Writing ${values.join(', ')} to holding register address ${dataAddress} (write multiple)`)
+        return await modbusClient.writeRegisters(dataAddress, values)
+    } catch (e) {
+        logger.error(`Failed to write holding register address ${dataAddress}, values ${values.join(', ')}`)
         throw e
     }
 }

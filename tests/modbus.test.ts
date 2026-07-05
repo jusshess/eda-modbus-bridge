@@ -31,6 +31,7 @@ describe('setSetting', () => {
     beforeEach(() => {
         mockClient = {
             writeRegister: jest.fn().mockResolvedValue(undefined),
+            writeRegisters: jest.fn().mockResolvedValue(undefined),
             writeCoil: jest.fn().mockResolvedValue(undefined),
         } as any
     })
@@ -105,8 +106,15 @@ describe('setSetting', () => {
         })
 
         test('should write fan level settings', async () => {
+            // ventilationLevel (reg 53) must use write-multiple (FC16) — the unit
+            // ignores it as a single-register (FC6) write.
             await setSetting(mockClient, 'ventilationLevel', '60')
-            expect(mockClient.writeRegister).toHaveBeenCalledWith(53, 60)
+            expect(mockClient.writeRegisters).toHaveBeenCalledWith(53, [60])
+            expect(mockClient.writeRegister).not.toHaveBeenCalledWith(53, 60)
+            // Must not touch reg 54 (supplyFanOverPressure) — unlike the old
+            // native modbus, which wrote [value, 0] and zeroed it.
+            expect(mockClient.writeRegister).not.toHaveBeenCalledWith(54, expect.anything())
+            expect(mockClient.writeRegisters).not.toHaveBeenCalledWith(53, [60, 0])
 
             await setSetting(mockClient, 'supplyFanBaseSpeed', '34')
             expect(mockClient.writeRegister).toHaveBeenCalledWith(51, 34)
@@ -119,7 +127,7 @@ describe('setSetting', () => {
             await expect(setSetting(mockClient, 'ventilationLevel', '10')).rejects.toThrow('value 10 below minimum 20')
 
             await setSetting(mockClient, 'ventilationLevel', '20')
-            expect(mockClient.writeRegister).toHaveBeenCalledWith(53, 20)
+            expect(mockClient.writeRegisters).toHaveBeenCalledWith(53, [20])
         })
 
         test('should write per-function fan speeds', async () => {
