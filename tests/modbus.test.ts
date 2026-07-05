@@ -30,6 +30,9 @@ describe('setSetting', () => {
 
     beforeEach(() => {
         mockClient = {
+            // Reg 53 = 45 (level), reg 54 = 30 (supplyFanOverPressure) — used by
+            // the read-modify-write block path so we can assert reg 54 is preserved.
+            readHoldingRegisters: jest.fn().mockResolvedValue({ data: [45, 30] }),
             writeRegister: jest.fn().mockResolvedValue(undefined),
             writeRegisters: jest.fn().mockResolvedValue(undefined),
             writeCoil: jest.fn().mockResolvedValue(undefined),
@@ -106,14 +109,13 @@ describe('setSetting', () => {
         })
 
         test('should write fan level settings', async () => {
-            // ventilationLevel (reg 53) must use write-multiple (FC16) — the unit
-            // ignores it as a single-register (FC6) write.
+            // ventilationLevel (reg 53) is written as a 2-register FC16 block via
+            // read-modify-write: reg 53 = value, reg 54 kept at its current value.
             await setSetting(mockClient, 'ventilationLevel', '60')
-            expect(mockClient.writeRegisters).toHaveBeenCalledWith(53, [60])
+            expect(mockClient.readHoldingRegisters).toHaveBeenCalledWith(53, 2)
+            expect(mockClient.writeRegisters).toHaveBeenCalledWith(53, [60, 30]) // reg 54 (30) preserved
             expect(mockClient.writeRegister).not.toHaveBeenCalledWith(53, 60)
-            // Must not touch reg 54 (supplyFanOverPressure) — unlike the old
-            // native modbus, which wrote [value, 0] and zeroed it.
-            expect(mockClient.writeRegister).not.toHaveBeenCalledWith(54, expect.anything())
+            // Must not zero reg 54 the way the old native `[value, 0]` write did.
             expect(mockClient.writeRegisters).not.toHaveBeenCalledWith(53, [60, 0])
 
             await setSetting(mockClient, 'supplyFanBaseSpeed', '34')
@@ -127,7 +129,14 @@ describe('setSetting', () => {
             await expect(setSetting(mockClient, 'ventilationLevel', '10')).rejects.toThrow('value 10 below minimum 20')
 
             await setSetting(mockClient, 'ventilationLevel', '20')
-            expect(mockClient.writeRegisters).toHaveBeenCalledWith(53, [20])
+            expect(mockClient.writeRegisters).toHaveBeenCalledWith(53, [20, 30])
+        })
+
+        test('should not write the block if the read-modify-write read fails', async () => {
+            ;(mockClient.readHoldingRegisters as jest.Mock).mockRejectedValueOnce(new Error('Modbus timeout'))
+
+            await expect(setSetting(mockClient, 'ventilationLevel', '60')).rejects.toThrow('Modbus timeout')
+            expect(mockClient.writeRegisters).not.toHaveBeenCalled()
         })
 
         test('should write per-function fan speeds', async () => {

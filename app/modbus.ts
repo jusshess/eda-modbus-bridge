@@ -453,11 +453,30 @@ const setNumericSetting = async (
     // Apply register scaling (default 1 = no scaling)
     const scaledValue = numericValue * (settingConfig.registerScale ?? 1)
 
-    await mutex.runExclusive(async () =>
-        settingConfig.writeMultiple
-            ? tryWriteHoldingRegisters(modbusClient, settingConfig.dataAddress, [scaledValue])
-            : tryWriteHoldingRegister(modbusClient, settingConfig.dataAddress, scaledValue)
-    )
+    const blockLength = settingConfig.writeMultiple
+    if (blockLength && blockLength > 1) {
+        // Some registers (e.g. ventilation level, 53) are only held by the unit
+        // when written as a multi-register FC16 block. Read-modify-write so the
+        // trailing registers (e.g. reg 54 supplyFanOverPressure) keep their
+        // current values rather than being clobbered.
+        await mutex.runExclusive(async () => {
+            const current = await tryReadHoldingRegisters(modbusClient, settingConfig.dataAddress, blockLength)
+            if (current.data.length < blockLength) {
+                // A short read would silently downgrade to a smaller block and
+                // reintroduce the revert bug this write is meant to avoid.
+                throw new Error(
+                    `Short read at ${settingConfig.dataAddress}: expected ${blockLength}, got ${current.data.length}`
+                )
+            }
+            const values = current.data.slice(0, blockLength)
+            values[0] = scaledValue
+            return tryWriteHoldingRegisters(modbusClient, settingConfig.dataAddress, values)
+        })
+    } else {
+        await mutex.runExclusive(async () =>
+            tryWriteHoldingRegister(modbusClient, settingConfig.dataAddress, scaledValue)
+        )
+    }
 }
 
 export const getDeviceInformation = async (modbusClient: ModbusRTU): Promise<DeviceInformation> => {
