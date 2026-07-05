@@ -365,6 +365,16 @@ export const getSettings = async (modbusClient: ModbusRTU): Promise<Settings> =>
         'ventilationLevel': result.data[2],
     }
 
+    // Per-function fan speeds (cooker hood = 58/59, central vacuum cleaner = 60/61)
+    result = await mutex.runExclusive(async () => tryReadHoldingRegisters(modbusClient, 58, 4))
+    settings = {
+        ...settings,
+        'cookerHoodSupplyFanSpeed': result.data[0],
+        'cookerHoodExhaustFanSpeed': result.data[1],
+        'centralVacuumSupplyFanSpeed': result.data[2],
+        'centralVacuumExhaustFanSpeed': result.data[3],
+    }
+
     // Fan speeds during over-pressurization
     result = await mutex.runExclusive(async () => tryReadHoldingRegisters(modbusClient, 54, 2))
     settings = {

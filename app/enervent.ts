@@ -62,6 +62,14 @@ export const AVAILABLE_SETTINGS: Record<string, SettingConfiguration> = {
     'ventilationLevel': { dataAddress: 53, decimals: 0, registerType: 'holding', min: 20, max: 100 },
     'supplyFanBaseSpeed': { dataAddress: 51, decimals: 0, registerType: 'holding', min: 20, max: 100 },
     'exhaustFanBaseSpeed': { dataAddress: 52, decimals: 0, registerType: 'holding', min: 20, max: 100 },
+    // Per-function fan speeds (percent). When the matching auxiliary function is
+    // active, the unit drives supply/exhaust to these setpoints. Setting supply
+    // higher than exhaust biases the house towards positive pressure, e.g. to
+    // compensate for a kitchen cooker hood extracting air.
+    'cookerHoodSupplyFanSpeed': { dataAddress: 58, decimals: 0, registerType: 'holding', min: 20, max: 100 },
+    'cookerHoodExhaustFanSpeed': { dataAddress: 59, decimals: 0, registerType: 'holding', min: 20, max: 100 },
+    'centralVacuumSupplyFanSpeed': { dataAddress: 60, decimals: 0, registerType: 'holding', min: 20, max: 100 },
+    'centralVacuumExhaustFanSpeed': { dataAddress: 61, decimals: 0, registerType: 'holding', min: 20, max: 100 },
 }
 
 export enum TemperatureControlState {
@@ -183,6 +191,10 @@ export type Settings = {
     ventilationLevel: number
     supplyFanBaseSpeed: number
     exhaustFanBaseSpeed: number
+    cookerHoodSupplyFanSpeed: number
+    cookerHoodExhaustFanSpeed: number
+    centralVacuumSupplyFanSpeed: number
+    centralVacuumExhaustFanSpeed: number
 }
 
 export type DeviceInformation = {

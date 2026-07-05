@@ -121,6 +121,20 @@ describe('setSetting', () => {
             await setSetting(mockClient, 'ventilationLevel', '20')
             expect(mockClient.writeRegister).toHaveBeenCalledWith(53, 20)
         })
+
+        test('should write per-function fan speeds', async () => {
+            await setSetting(mockClient, 'cookerHoodSupplyFanSpeed', '45')
+            expect(mockClient.writeRegister).toHaveBeenCalledWith(58, 45)
+
+            await setSetting(mockClient, 'cookerHoodExhaustFanSpeed', '25')
+            expect(mockClient.writeRegister).toHaveBeenCalledWith(59, 25)
+
+            await setSetting(mockClient, 'centralVacuumSupplyFanSpeed', '50')
+            expect(mockClient.writeRegister).toHaveBeenCalledWith(60, 50)
+
+            await setSetting(mockClient, 'centralVacuumExhaustFanSpeed', '30')
+            expect(mockClient.writeRegister).toHaveBeenCalledWith(61, 30)
+        })
     })
 
     describe('coil settings (boolean)', () => {
