@@ -603,6 +603,59 @@ export const parseDevice = (device: string): ModbusDevice => {
     }
 }
 
+// Open (or re-open) the Modbus connection for the given device.
+export const openModbusConnection = async (
+    modbusClient: ModbusRTU,
+    modbusDevice: ModbusDevice,
+    slaveId: number,
+    timeoutMs: number
+) => {
+    modbusClient.setID(slaveId)
+    modbusClient.setTimeout(timeoutMs)
+
+    if (modbusDevice.type === ModbusDeviceType.RTU) {
+        const rtuDevice = modbusDevice as ModbusRtuDevice
+        await modbusClient.connectRTUBuffered(rtuDevice.path, {
+            baudRate: 19200,
+            dataBits: 8,
+            parity: 'none',
+            stopBits: 1,
+        })
+    } else {
+        const tcpDevice = modbusDevice as ModbusTcpDevice
+        await modbusClient.connectTCP(tcpDevice.hostname, {
+            port: tcpDevice.port,
+        })
+    }
+}
+
+// Close and re-open the Modbus connection. Used to recover a wedged serial
+// client after repeated transaction timeouts, instead of crashing the process
+// (which systemd would just restart, losing another ~2 minutes to the initial
+// full register read).
+export const reconnectModbus = async (
+    modbusClient: ModbusRTU,
+    modbusDevice: ModbusDevice,
+    slaveId: number,
+    timeoutMs: number
+) => {
+    if (modbusClient.isOpen) {
+        // Bound the close: on a physically wedged/unplugged adapter close() can
+        // fail to invoke its callback, which would otherwise hang the caller
+        // forever (worse than crashing, since systemd wouldn't restart us). Give
+        // up waiting after timeoutMs and try to reopen anyway.
+        await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, timeoutMs)
+            modbusClient.close(() => {
+                clearTimeout(timer)
+                resolve()
+            })
+        })
+    }
+
+    await openModbusConnection(modbusClient, modbusDevice, slaveId, timeoutMs)
+}
+
 const tryReadCoils = async (modbusClient: ModbusRTU, dataAddress: number, length: number) => {
     try {
         logger.debug(`Reading coil address ${dataAddress}, length ${length}`)

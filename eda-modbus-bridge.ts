@@ -13,7 +13,7 @@ import {
 } from './app/mqtt.js'
 import { configureMqttDiscovery } from './app/homeassistant'
 import { createLogger, setLogLevel } from './app/logger'
-import { ModbusDeviceType, ModbusRtuDevice, ModbusTcpDevice, parseDevice, validateDevice } from './app/modbus'
+import { openModbusConnection, parseDevice, reconnectModbus, validateDevice } from './app/modbus'
 import { setIntervalAsync } from 'set-interval-async'
 import { ErrorHandler } from './app/error'
 
@@ -117,24 +117,7 @@ void (async () => {
     )
     const modbusDevice = parseDevice(argv.device)
     const modbusClient = new ModbusRTU()
-    modbusClient.setID(argv.modbusSlave)
-    modbusClient.setTimeout(argv.modbusTimeout * 1000)
-
-    // Use buffered RTU or TCP depending on device type
-    if (modbusDevice.type === ModbusDeviceType.RTU) {
-        const rtuDevice = modbusDevice as ModbusRtuDevice
-        await modbusClient.connectRTUBuffered(rtuDevice.path, {
-            baudRate: 19200,
-            dataBits: 8,
-            parity: 'none',
-            stopBits: 1,
-        })
-    } else if (modbusDevice.type === ModbusDeviceType.TCP) {
-        const tcpDevice = modbusDevice as ModbusTcpDevice
-        await modbusClient.connectTCP(tcpDevice.hostname, {
-            port: tcpDevice.port,
-        })
-    }
+    await openModbusConnection(modbusClient, modbusDevice, argv.modbusSlave, argv.modbusTimeout * 1000)
 
     // Optionally create HTTP server
     if (argv.http) {
@@ -204,12 +187,37 @@ void (async () => {
             // Publish readings/settings/modes/alarms once immediately, then regularly according to the configured
             // interval.
             await publishValues(modbusClient, mqttClient)
+            // Recover a wedged Modbus link (repeated timeouts keep failing until
+            // reconnected) by reconnecting the port instead of letting the error
+            // handler's re-throw escape as an unhandled rejection and crash the
+            // process — systemd would just restart us and lose ~2 minutes to the
+            // initial full register read. Never throws, so it is safe to await from
+            // both the publish loop and the MQTT command handler, which share the
+            // same error counter.
+            const recoverFromModbusError = async (e: Error) => {
+                try {
+                    errorHandler.handleError(e)
+                } catch {
+                    logger.error('Too many consecutive Modbus errors, reconnecting Modbus...')
+                    try {
+                        await reconnectModbus(modbusClient, modbusDevice, argv.modbusSlave, argv.modbusTimeout * 1000)
+                        logger.info('Modbus reconnected')
+                    } catch (reconnectError) {
+                        logger.error(`Modbus reconnect failed: ${(reconnectError as Error).message}`)
+                    } finally {
+                        // Reset either way so we tolerate another batch of errors
+                        // before the next reconnect attempt.
+                        errorHandler.resetCounter()
+                    }
+                }
+            }
+
             setIntervalAsync(async () => {
                 try {
                     await publishValues(modbusClient, mqttClient)
                     errorHandler.resetCounter()
                 } catch (e) {
-                    errorHandler.handleError(e as Error)
+                    await recoverFromModbusError(e as Error)
                 }
             }, argv.mqttPublishInterval * 1000)
 
@@ -223,7 +231,9 @@ void (async () => {
                     await handleMessage(modbusClient, mqttClient, topicName, payload)
                     errorHandler.resetCounter()
                 } catch (e) {
-                    errorHandler.handleError(e as Error)
+                    // Same wedged-bus recovery as the publish loop — an inbound
+                    // command timing out must not crash the process either.
+                    await recoverFromModbusError(e as Error)
                 }
             })
 
