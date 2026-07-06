@@ -213,6 +213,20 @@ describe('setSetting', () => {
             await setSetting(mockClient, 'centralVacuumExhaustFanSpeed', '30')
             expect(mockClient.writeRegister).toHaveBeenCalledWith(61, 30)
         })
+
+        test('should write cooling block temperature scaled to reg 164', async () => {
+            await setSetting(mockClient, 'coolingBlockTemperature', '10')
+            expect(mockClient.writeRegister).toHaveBeenCalledWith(164, 100) // 10 * 10
+        })
+
+        test('should enforce cooling block temperature min/max', async () => {
+            await expect(setSetting(mockClient, 'coolingBlockTemperature', '-1')).rejects.toThrow(
+                'value -1 below minimum 0'
+            )
+            await expect(setSetting(mockClient, 'coolingBlockTemperature', '41')).rejects.toThrow(
+                'value 41 above maximum 40'
+            )
+        })
     })
 
     describe('coil settings (boolean)', () => {

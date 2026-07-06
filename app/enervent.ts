@@ -90,6 +90,18 @@ export const AVAILABLE_SETTINGS: Record<string, SettingConfiguration> = {
     'cookerHoodExhaustFanSpeed': { dataAddress: 59, decimals: 0, registerType: 'holding', min: 20, max: 100 },
     'centralVacuumSupplyFanSpeed': { dataAddress: 60, decimals: 0, registerType: 'holding', min: 20, max: 100 },
     'centralVacuumExhaustFanSpeed': { dataAddress: 61, decimals: 0, registerType: 'holding', min: 20, max: 100 },
+    // COOL BLOCK T (reg 164): active/ground cooling — and its circulation pump — is
+    // blocked when the outdoor temperature is below this value. Lower it to let
+    // cooling run in cooler weather. Stored as value/10 °C. Range kept >= 0 to
+    // avoid two's-complement writes and unintended sub-zero (winter) cooling.
+    'coolingBlockTemperature': {
+        dataAddress: 164,
+        decimals: 1,
+        registerType: 'holding',
+        registerScale: 10,
+        min: 0,
+        max: 40,
+    },
 }
 
 export enum TemperatureControlState {
@@ -185,6 +197,9 @@ export type Readings = {
     extractFilterPressure?: number
     heatExchangerPressure?: number
     absoluteHumidity?: number
+    coolingRequest1On?: number
+    coolingRequest1Off?: number
+    coolingRestartDelay?: number
 }
 
 export type Settings = {
@@ -215,6 +230,7 @@ export type Settings = {
     cookerHoodExhaustFanSpeed: number
     centralVacuumSupplyFanSpeed: number
     centralVacuumExhaustFanSpeed: number
+    coolingBlockTemperature?: number
 }
 
 export type DeviceInformation = {

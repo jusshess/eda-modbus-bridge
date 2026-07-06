@@ -231,6 +231,25 @@ export const getReadings = async (modbusClient: ModbusRTU): Promise<Readings> =>
         logger.error('Failed to read absolute humidity register (36), skipping')
     }
 
+    // Cooling configuration (read-only) — helps explain when the cooling stage and
+    // its circulation pump engage: COOL QRY1 SET/RESET (155/156) are the demand
+    // thresholds, COOL RSTART DEL (161) the restart delay, and COOL BLOCK T (164)
+    // blocks cooling below that outdoor temperature. Read defensively — not
+    // present on all firmwares/cooling types.
+    try {
+        const cooling = await mutex.runExclusive(async () => tryReadHoldingRegisters(modbusClient, 155, 7))
+        readings = {
+            ...readings,
+            'coolingRequest1On': cooling.data[0], // 155
+            'coolingRequest1Off': cooling.data[1], // 156
+            'coolingRestartDelay': cooling.data[6], // 161
+        }
+    } catch {
+        logger.error('Failed to read cooling configuration registers (155-161), skipping')
+    }
+    // COOL BLOCK T (164) is exposed as a writable setting (coolingBlockTemperature)
+    // in getSettings, not as a read-only reading here.
+
     return readings as Readings
 }
 
@@ -390,6 +409,18 @@ export const getSettings = async (modbusClient: ModbusRTU): Promise<Settings> =>
             ...settings,
             'eco': result.data[0],
         }
+    }
+
+    // Cooling block temperature (reg 164, value/10 °C). Read defensively — only
+    // present on units with a cooling type configured.
+    try {
+        result = await mutex.runExclusive(async () => tryReadHoldingRegisters(modbusClient, 164, 1))
+        settings = {
+            ...settings,
+            'coolingBlockTemperature': parseTemperature(result.data[0]),
+        }
+    } catch {
+        logger.error('Failed to read cooling block temperature register (164), skipping')
     }
 
     return settings as Settings
