@@ -1,4 +1,12 @@
-import { validateDevice, parseDevice, ModbusDeviceType, setSetting, getDeviceStatuses } from '../app/modbus'
+import {
+    validateDevice,
+    parseDevice,
+    ModbusDeviceType,
+    setSetting,
+    getDeviceStatuses,
+    openModbusConnection,
+    reconnectModbus,
+} from '../app/modbus'
 import ModbusRTU from 'modbus-serial'
 
 test('validateDevice', () => {
@@ -22,6 +30,59 @@ test('parseDevice', () => {
         type: ModbusDeviceType.TCP,
         hostname: '127.0.0.1',
         port: 502,
+    })
+})
+
+describe('reconnectModbus / openModbusConnection', () => {
+    const makeClient = (isOpen: boolean) =>
+        ({
+            setID: jest.fn(),
+            setTimeout: jest.fn(),
+            connectRTUBuffered: jest.fn().mockResolvedValue(undefined),
+            connectTCP: jest.fn().mockResolvedValue(undefined),
+            close: jest.fn((cb: () => void) => cb()),
+            isOpen,
+        } as unknown as ModbusRTU)
+
+    test('openModbusConnection sets slave id + timeout and opens RTU', async () => {
+        const client = makeClient(false)
+        await openModbusConnection(client, parseDevice('/dev/ttyUSB0'), 1, 2000)
+        expect(client.setID).toHaveBeenCalledWith(1)
+        expect(client.setTimeout).toHaveBeenCalledWith(2000)
+        expect(client.connectRTUBuffered).toHaveBeenCalledWith(
+            '/dev/ttyUSB0',
+            expect.objectContaining({ baudRate: 19200, dataBits: 8, parity: 'none', stopBits: 1 })
+        )
+    })
+
+    test('openModbusConnection opens TCP for tcp devices', async () => {
+        const client = makeClient(false)
+        await openModbusConnection(client, parseDevice('tcp://localhost:502'), 1, 2000)
+        expect(client.connectTCP).toHaveBeenCalledWith('localhost', { port: 502 })
+    })
+
+    test('reconnectModbus closes an open connection before reopening', async () => {
+        const client = makeClient(true)
+        await reconnectModbus(client, parseDevice('/dev/ttyUSB0'), 1, 2000)
+        expect(client.close).toHaveBeenCalled()
+        expect(client.connectRTUBuffered).toHaveBeenCalled()
+    })
+
+    test('reconnectModbus skips close when the port is not open', async () => {
+        const client = makeClient(false)
+        await reconnectModbus(client, parseDevice('/dev/ttyUSB0'), 1, 2000)
+        expect(client.close).not.toHaveBeenCalled()
+        expect(client.connectRTUBuffered).toHaveBeenCalled()
+    })
+
+    test('reconnectModbus reopens even if close never invokes its callback', async () => {
+        const client = makeClient(true)
+        // Simulate a wedged port whose close() never calls back.
+        ;(client.close as jest.Mock).mockImplementation(() => {})
+        // Small timeout so the bounded close resolves quickly in the test.
+        await reconnectModbus(client, parseDevice('/dev/ttyUSB0'), 1, 10)
+        expect(client.close).toHaveBeenCalled()
+        expect(client.connectRTUBuffered).toHaveBeenCalled()
     })
 })
 
