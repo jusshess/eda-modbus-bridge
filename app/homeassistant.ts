@@ -175,6 +175,22 @@ export const configureMqttDiscovery = async (modbusClient: ModbusRTU, mqttClient
             'Temperature control state',
             getTemperatureControlStateValues()
         ),
+        // Cooling configuration (read-only) — diagnose when the cooling stage/pump engages
+        'coolingRequest1On': createSensorConfiguration(configurationBase, 'coolingRequest1On', 'Cooling request 1 on', {
+            'unit_of_measurement': '%',
+        }),
+        'coolingRequest1Off': createSensorConfiguration(
+            configurationBase,
+            'coolingRequest1Off',
+            'Cooling request 1 off',
+            { 'unit_of_measurement': '%' }
+        ),
+        'coolingRestartDelay': createSensorConfiguration(
+            configurationBase,
+            'coolingRestartDelay',
+            'Cooling restart delay',
+            { 'unit_of_measurement': 'minutes' }
+        ),
         // Optional sensors. These are not available for all users, so the entities are disabled by default.
         'roomTemperatureAvg': createTemperatureSensorConfiguration(
             configurationBase,
@@ -336,6 +352,16 @@ export const configureMqttDiscovery = async (modbusClient: ModbusRTU, mqttClient
                 min: 20,
                 max: 100,
                 'unit_of_measurement': '%',
+            }
+        ),
+        'coolingBlockTemperature': createNumberConfiguration(
+            configurationBase,
+            'coolingBlockTemperature',
+            'Cooling block temperature',
+            {
+                min: 0,
+                max: 40,
+                'unit_of_measurement': '°C',
             }
         ),
         'cookerHoodSupplyFanSpeed': createNumberConfiguration(
